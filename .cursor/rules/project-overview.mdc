@@ -3,36 +3,89 @@ description: Project mission, stack, and boundaries — always apply
 alwaysApply: true
 ---
 
-# Stash — project overview
-
-Fill in the placeholders below so every agent (including subagents) shares the same picture of this repo.
+# Stash — Always-On Notion Capture App
 
 ## Mission
 
-- **Problem:** <!-- Who is this for and what pain does it solve? -->
-- **Success looks like:** <!-- Outcomes, not implementation details. -->
-- **Non-goals:** <!-- What this project deliberately does not do. -->
+- **Problem:** Small business owners need frictionless capture of anything on their screen into Notion without breaking their flow.
+- **Success looks like:** A lightweight always-on Mac desktop app (system tray, no dock icon) that captures screenshots plus optional text and files them into the correct Notion database using Claude’s vision and routing intelligence. Interaction should feel like Cluely/Raycast — appears instantly on hotkey, disappears after capture. Full capture loop under ~5 seconds.
+- **Non-goals (MVP):** Not targeting Windows/Linux yet; no voice capture in MVP; smart routing is Claude-driven to the right Notion DB — not a manual-only picker workflow unless we add it later.
+
+## What we’re building
+
+- **Core UX:** Hotkey (e.g. Cmd+Shift+S) → overlay appears → screenshot auto-captured → optional text note → Enter → Claude reads screenshot + note + Notion DB schema → routes to the correct DB with metadata → Notion page created → overlay disappears → toast confirmation.
 
 ## Stack and layout
 
-- **UI:** Vue 3 + TypeScript + Vite (`stash/`).
-- **Desktop shell:** Tauri 2 + Rust (`stash/src-tauri/`).
+- **Desktop shell:** Tauri 2 (Rust + Mac native APIs) — `stash/src-tauri/`.
+- **Overlay UI (target):** React + TypeScript. *(The repo may still use a Vue + Vite template until migrated — follow the target stack for new UI work unless the user says otherwise.)*
+- **Sidecar:** Python FastAPI — Claude API, Notion API, business logic — `stash/python-sidecar/` (venv only under `python-sidecar/`, not repo root).
+- **Integrations:** Claude Vision API (screenshot understanding + routing); Notion API (database writes).
 - **Workspace note:** Application source lives under the nested `stash/` directory at repo root, not only at the top level.
+
+## Project structure (target)
+
+```
+stash/
+├── src/                    # React frontend (overlay UI)
+├── src-tauri/              # Tauri/Rust (hotkeys, window, tray)
+└── python-sidecar/         # FastAPI server (Claude, Notion logic)
+    └── venv/               # Python virtual environment (only here)
+```
+
+## Build order (reference)
+
+1. Tauri scaffold + dev window working  
+2. Global hotkey → triggers overlay window  
+3. Screenshot capture on hotkey  
+4. React overlay UI (screenshot preview + text input)  
+5. Python sidecar FastAPI running as a Tauri sidecar  
+6. Claude vision call (screenshot + note → routing JSON)  
+7. Notion API write to the correct DB  
+8. Menu bar icon + toast notifications  
+9. Settings page (Notion DB config, hotkey config)  
+
+## Key decisions
+
+- Mac only for MVP.  
+- Screenshot + text capture (no voice for now).  
+- Smart routing: Claude chooses which Notion DB from screen context.  
+- Python owns AI/API logic; Rust/Tauri owns native Mac behavior.  
+- Venv lives only in `python-sidecar/`, not project root.
+
+## Future (post-MVP)
+
+- Voice capture mode  
+- Meta smart glasses as capture surface (same pipeline, new input)  
+- WhatsApp Business, Slack as additional output layers  
+- Mobile companion app  
+
+## Current status (update as you go)
+
+- [ ] Tauri scaffold complete  
+- [ ] Dev window running  
+- [ ] Hotkey registered  
+- [ ] Overlay UI built  
+- [ ] Python sidecar running  
+- [ ] Claude vision working  
+- [ ] Notion write working  
 
 ## Conventions agents should follow
 
 - Match existing patterns in `stash/src/` and `stash/src-tauri/` before introducing new abstractions.
 - Prefer small, focused changes; avoid drive-by refactors outside the requested task.
-- <!-- Add team preferences: testing, formatting, PR style, etc. -->
+- **Assume:** The user is comfortable with React and Python and has minimal Rust experience — prefer clear guidance over dumping copy-paste code; they want to understand and build iteratively (one working step at a time).
+- **Ask before** making architectural decisions that are not documented here.
 
 ## Key paths
 
 | Area | Path |
 |------|------|
-| Frontend | `stash/src/` |
+| Frontend (overlay) | `stash/src/` |
 | Rust / Tauri | `stash/src-tauri/src/` |
+| Python sidecar | `stash/python-sidecar/` |
 | Config | `stash/vite.config.ts`, `stash/src-tauri/tauri.conf.json` |
 
 ## Links / references
 
-- <!-- Internal docs, design links, issue tracker, etc. -->
+- *(Add internal docs, design links, issue tracker, etc.)*
