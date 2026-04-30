@@ -1,0 +1,38 @@
+---
+description: Project mission, stack, and boundaries — always apply
+alwaysApply: true
+---
+
+# Stash — project overview
+
+Fill in the placeholders below so every agent (including subagents) shares the same picture of this repo.
+
+## Mission
+
+- **Problem:** <!-- Who is this for and what pain does it solve? -->
+- **Success looks like:** <!-- Outcomes, not implementation details. -->
+- **Non-goals:** <!-- What this project deliberately does not do. -->
+
+## Stack and layout
+
+- **UI:** Vue 3 + TypeScript + Vite (`stash/`).
+- **Desktop shell:** Tauri 2 + Rust (`stash/src-tauri/`).
+- **Workspace note:** Application source lives under the nested `stash/` directory at repo root, not only at the top level.
+
+## Conventions agents should follow
+
+- Match existing patterns in `stash/src/` and `stash/src-tauri/` before introducing new abstractions.
+- Prefer small, focused changes; avoid drive-by refactors outside the requested task.
+- <!-- Add team preferences: testing, formatting, PR style, etc. -->
+
+## Key paths
+
+| Area | Path |
+|------|------|
+| Frontend | `stash/src/` |
+| Rust / Tauri | `stash/src-tauri/src/` |
+| Config | `stash/vite.config.ts`, `stash/src-tauri/tauri.conf.json` |
+
+## Links / references
+
+- <!-- Internal docs, design links, issue tracker, etc. -->
