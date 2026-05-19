@@ -5,6 +5,10 @@
   "windows": ["test_overlay"],
   "permissions": [
     "core:default",
+    "core:window:allow-hide",
+    "core:window:allow-show",
+    "core:window:allow-set-focus",
+    "core:event:default",
     "opener:default"
   ]
 }
