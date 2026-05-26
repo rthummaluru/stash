@@ -3,89 +3,308 @@ description: Project mission, stack, and boundaries — always apply
 alwaysApply: true
 ---
 
-# Stash — Always-On Notion Capture App
+# Stash v1 — Project Context & System Prompt
 
-## Mission
+## What is Stash?
 
-- **Problem:** Small business owners need frictionless capture of anything on their screen into Notion without breaking their flow.
-- **Success looks like:** A lightweight always-on Mac desktop app (system tray, no dock icon) that captures screenshots plus optional text and files them into the correct Notion database using Claude’s vision and routing intelligence. Interaction should feel like Cluely/Raycast — appears instantly on hotkey, disappears after capture. Full capture loop under ~5 seconds.
-- **Non-goals (MVP):** Not targeting Windows/Linux yet; no voice capture in MVP; smart routing is Claude-driven to the right Notion DB — not a manual-only picker workflow unless we add it later.
+Stash is a macOS desktop application built with Tauri v2 (Rust + React + TypeScript). It is a proactive, ambient AI file management agent — best described as "YNAB for your files." Just as YNAB gives every dollar a job, Stash gives every file a home.
 
-## What we’re building
+Stash runs quietly in the system tray, watches user-defined folders for file activity, and automatically moves files based on a learned ruleset — notifying the user after the fact with a one-tap undo. A global hotkey (⌘Space) summons a floating side panel for manual queries, rule management, pending file review, and move history.
 
-- **Core UX:** Hotkey (e.g. Cmd+Shift+S) → overlay appears → screenshot auto-captured → optional text note → Enter → Claude reads screenshot + note + Notion DB schema → routes to the correct DB with metadata → Notion page created → overlay disappears → toast confirmation.
+The guiding philosophy: Stash should feel like a new employee who asks a lot of questions in week one and works almost entirely independently by month two.
 
-## Stack and layout
+---
 
-- **Desktop shell:** Tauri 2 (Rust + Mac native APIs) — `stash/src-tauri/`.
-- **Overlay UI (target):** React + TypeScript. *(The repo may still use a Vue + Vite template until migrated — follow the target stack for new UI work unless the user says otherwise.)*
-- **Sidecar:** Python FastAPI — Claude API, Notion API, business logic — `stash/python-sidecar/` (venv only under `python-sidecar/`, not repo root).
-- **Integrations:** Claude Vision API (screenshot understanding + routing); Notion API (database writes).
-- **Workspace note:** Application source lives under the nested `stash/` directory at repo root, not only at the top level.
+## Core Design Philosophy
 
-## Project structure (target)
+- Proactive not reactive: Stash acts on file events without being asked
+- Auto-move with safety net: files move automatically; every action is undoable within 30 seconds via a toast notification
+- Rules you own: all organization logic lives as human-readable rules in local SQLite — inspectable, editable, deletable at any time
+- Local-first: no cloud sync, no telemetry, all rules and memory on-device
+- Bring-your-own-key: Claude API key stored in system keychain via tauri-plugin-store
+- Earn trust over time: Stash starts cautious and becomes more autonomous as its ruleset matures
 
+---
+
+## The YNAB Mental Model
+
+YNAB asks: "what is this money for?" and forces the user to assign every dollar to a category before spending.
+
+Stash asks: "what is this file for?" and learns the answer over time through user interactions.
+
+Key parallels:
+
+- New file with no matching rule = unbudgeted transaction → goes to pending inbox
+- User resolves pending file → teaches Stash a rule → auto-applied going forward
+- Rules are visible and editable, just like budget categories
+- The system gets smarter the more you use it
+
+---
+
+## Onboarding Flow (v1 focus: new computer setup)
+
+On first launch, Stash asks one question:
+
+"Are you setting up a new computer, or organizing an existing one?"
+
+For v1, we focus exclusively on the new computer path.
+
+New computer flow:
+
+1. Welcome screen — brief explanation of how Stash works
+2. Template or custom?
+   - Template: Stash generates a starter folder structure based on 3 quick questions
+   - Custom: user defines folders manually
+3. Template questions (if selected):
+   - What do you primarily use this computer for? (work / personal / both)
+   - What do you create most? (documents / design / code / media / mixed)
+   - How hands-off do you want to be? (slider: suggest only ↔ auto-move everything)
+4. Stash generates a starter folder structure + initial ruleset using Claude
+5. User reviews and optionally renames folders
+6. Watch folders confirmed (default: ~/Downloads, ~/Desktop)
+7. Done — file watching starts immediately
+
+The "organizing an existing computer" path is deferred to v2.
+
+---
+
+## File Classification System
+
+### Priority order (no AI needed for steps 1–3)
+
+1. Exact rule match (SQLite)        → move instantly, silent
+2. Filename pattern match           → high confidence, auto-move + toast
+3. Extension + file size heuristics → medium confidence, auto-move + toast
+4. Ambiguous: peek first 500 chars  → text/PDF files only, then classify
+5. Still ambiguous                  → pending inbox + soft notification
+
+### What Stash reads (metadata only by default)
+
+- Filename and extension
+- File size (used to distinguish clip vs full video, doc vs archive, etc.)
+- Download timestamp and time of day
+- Source folder (~/Downloads vs ~/Desktop vs other watched folder)
+
+### Content peeking (step 4 only)
+
+For text-based files (PDF, .txt, .docx, .md) where the filename is ambiguous or random, Stash reads only the first 500 characters. This is enough to detect invoices, contracts, receipts, README files, etc. without processing the full document.
+
+Binary files (video, audio, images, executables) are never read. Classification falls back to extension + size heuristics, then pending inbox if still unclear.
+
+### The ambiguity rule
+
+When Stash cannot confidently classify a file, it does NOT move it. Instead:
+
+- File stays in place
+- Soft notification: "1 file couldn't be sorted — tap to review"
+- Panel shows pending file with 2–3 destination chips (best guesses)
+- User taps a chip → file moves → that tap teaches Stash a new rule
+
+### The conflict rule (e.g. pet insurance bill)
+
+When a file could belong to multiple folders (pets AND insurance), Stash:
+
+- Picks one canonical destination based on the most specific matching rule
+- Tags the file with secondary context metadata in SQLite
+- The file lives in one place but is findable from both contexts via the panel search
+
+---
+
+## Autonomy levels
+
+Controlled by a slider in settings (also set during onboarding):
+
+- Suggest only → Stash never moves files, only surfaces suggestions in panel
+- Auto + notify → Default. Files move automatically, toast with undo appears
+- Silent auto → Files move silently, move logged to history, no toast (power users)
+
+v1 ships with "Auto + notify" as the default and only exposes the slider in settings.
+
+---
+
+## Claude's Role in Stash
+
+Claude is called in three scenarios only:
+
+1. Onboarding template generation
+   Generates a starter folder structure + initial ruleset from the user's 3 answers.
+   Returns structured JSON: { folders: [], rules: [] }
+
+2. File classification (unmatched files only)
+   Called when steps 1–3 of the classification ladder fail.
+   Input: { filename, extension, size_kb, peek_text (if available), existing_rules[] }
+   Output: { destination, confidence, suggested_rule, explanation }
+
+3. Natural language queries (panel freeform input)
+   "Where did my screenshots go?"
+   "Create a rule for Figma exports"
+   "Show me everything moved today"
+   "Undo the last 3 moves"
+   Claude responds conversationally and can trigger Tauri commands.
+
+Claude is NOT called for files that match existing rules. The Rust rules engine handles those entirely — no API cost, no latency.
+
+---
+
+## Tech Stack
+
+- Framework: Tauri v2 (Rust backend + React + TypeScript frontend)
+- UI: React + Tailwind CSS
+- AI: Claude API (claude-sonnet-4-6), streaming for NL queries
+- File watching: notify crate (Rust) — FSEvents on macOS
+- Memory: SQLite via tauri-plugin-sql
+- State: Zustand (frontend), tauri-plugin-store (persistence)
+- Notifications: tauri-plugin-notification
+
+---
+
+## Tauri Plugins
+
+| Plugin | Purpose |
+| --- | --- |
+| tauri-plugin-global-shortcut | ⌘Space summon/dismiss |
+| tauri-plugin-fs | File move + undo execution |
+| tauri-plugin-sql | SQLite rules + move history |
+| tauri-plugin-store | API key + user preferences |
+| tauri-plugin-notification | Move toast with Undo |
+| tauri-plugin-single-instance | One panel instance only |
+| tauri-plugin-shell | Reveal file in Finder |
+| notify (Rust crate) | FSEvents file watcher |
+
+---
+
+## SQLite Schema (source of truth — do not vibe this)
+
+```sql
+rules (
+  id, name, conditions_json, destination,
+  created_at, last_applied_at, apply_count
+)
+
+move_history (
+  id, rule_id, source_path, destination_path,
+  moved_at, undone BOOLEAN
+)
+
+sessions (id, created_at, updated_at)
+messages (id, session_id, role, content, created_at)
 ```
-stash/
-├── src/                    # React frontend (overlay UI)
-├── src-tauri/              # Tauri/Rust (hotkeys, window, tray)
-└── python-sidecar/         # FastAPI server (Claude, Notion logic)
-    └── venv/               # Python virtual environment (only here)
+
+Example conditions_json:
+
+```json
+{
+  "match": "any",
+  "conditions": [
+    { "field": "extension", "op": "in", "value": ["pdf", "docx"] },
+    { "field": "filename", "op": "contains", "value": "invoice" }
+  ]
+}
 ```
 
-## Build order (reference)
+---
 
-1. Tauri scaffold + dev window working  
-2. Global hotkey → triggers overlay window  
-3. Screenshot capture on hotkey  
-4. React overlay UI (screenshot preview + text input)  
-5. Python sidecar FastAPI running as a Tauri sidecar  
-6. Claude vision call (screenshot + note → routing JSON)  
-7. Notion API write to the correct DB  
-8. Menu bar icon + toast notifications  
-9. Settings page (Notion DB config, hotkey config)  
+## Window Configuration
 
-## Key decisions
+- decorations: false
+- always_on_top: true
+- skip_taskbar: true
+- transparent: true
+- focus: false — never steals focus from active app
+- width: 340px
+- height: dynamic, max 80vh
+- position: right edge, vertically centered
+- vibrancy: macOS Sidebar material via window-vibrancy crate
 
-- Mac only for MVP.  
-- Screenshot + text capture (no voice for now).  
-- Smart routing: Claude chooses which Notion DB from screen context.  
-- Python owns AI/API logic; Rust/Tauri owns native Mac behavior.  
-- Venv lives only in `python-sidecar/`, not project root.
+---
 
-## Future (post-MVP)
+## Panel — 3 States
 
-- Voice capture mode  
-- Meta smart glasses as capture surface (same pipeline, new input)  
-- WhatsApp Business, Slack as additional output layers  
-- Mobile companion app  
+### State 1 — Dashboard (default on summon)
 
-## Current status (update as you go)
+- Recent moves feed (last 10, each with undo if within 30s)
+- Pending files inbox (unresolved, with destination chips)
+- Soft summary: X files moved today, Y rules active
 
-- [ ] Tauri scaffold complete  
-- [ ] Dev window running  
-- [ ] Hotkey registered  
-- [ ] Overlay UI built  
-- [ ] Python sidecar running  
-- [ ] Claude vision working  
-- [ ] Notion write working  
+### State 2 — Rule Editor
 
-## Conventions agents should follow
+- Full list of rules sorted by usage frequency
+- Tap to edit conditions or destination
+- Toggle enable/disable per rule
+- Delete rule (with confirmation)
 
-- Match existing patterns in `stash/src/` and `stash/src-tauri/` before introducing new abstractions.
-- Prefer small, focused changes; avoid drive-by refactors outside the requested task.
-- **Assume:** The user is comfortable with React and Python and has minimal Rust experience — prefer clear guidance over dumping copy-paste code; they want to understand and build iteratively (one working step at a time).
-- **Ask before** making architectural decisions that are not documented here.
+### State 3 — Conversation
 
-## Key paths
+- Chat-style freeform input
+- Streaming Claude responses
+- Can surface move history, trigger rule creation, or execute undo
+- Destructive actions show confirm step before execution
 
-| Area | Path |
-|------|------|
-| Frontend (overlay) | `stash/src/` |
-| Rust / Tauri | `stash/src-tauri/src/` |
-| Python sidecar | `stash/python-sidecar/` |
-| Config | `stash/vite.config.ts`, `stash/src-tauri/tauri.conf.json` |
+---
 
-## Links / references
+## Build Order
 
-- *(Add internal docs, design links, issue tracker, etc.)*
+### Milestone 1 — Shell (complete)
+
+- [x] Tauri v2 scaffold (React + TypeScript + Tailwind)
+- [x] Global hotkey summon/dismiss (Ctrl+N dev shortcut; persistent panel window)
+- [x] Panel window config (always-on-top, no focus, transparent, right-anchored, draggable title bar)
+- [x] System tray icon + quit menu
+- [x] Minimal panel scaffold (empty state shell)
+- [x] macOS native vibrancy (Sidebar material)
+
+### Milestone 2 — File Watcher (next)
+
+- [~] notify crate watching ~/Downloads (early — Desktop not yet)
+- [ ] File event → Tauri command → frontend event emission (UI decoupled for M1)
+- [ ] Move history logged to SQLite
+- [ ] Toast notification with Undo (30s window)
+
+### Milestone 3 — Rules Engine
+
+- [ ] SQLite rule schema + migrations
+- [ ] Manual rule creation UI
+- [ ] Rule matching logic in Rust (no Claude needed for known rules)
+- [ ] Rule editor panel state
+
+### Milestone 4 — Claude Integration
+
+- [ ] API key onboarding screen
+- [ ] Onboarding template generation (folder structure + starter rules)
+- [ ] Classification call on unmatched file events
+- [ ] Rule suggestion chips in pending inbox
+- [ ] Natural language query input + streaming response
+- [ ] MCP server passthrough for future Tier 3 connectors
+
+### Milestone 5 — Polish
+
+- [ ] Bulk move review UI
+- [ ] Rule health stats (most used, never used, last applied)
+- [ ] Settings: watch folders, autonomy slider, API key management
+- [ ] "Organize existing computer" onboarding path (v2 prep)
+- [ ] Auto-update
+
+---
+
+## Key Implementation Notes
+
+- use tauri::Manager; must be explicitly imported in Rust for get_webview_window to resolve
+- Global hotkey uses two-window pattern: overlay is persistent + hidden by default, never re-created
+- From JS side: getCurrentWebviewWindow().hide() (Tauri 2.0 WebviewWindow API) dismisses overlay
+- notify crate has FSEvents debouncing quirks on macOS — use ~500ms debounce window
+- SQLite schema is locked early — migrations are painful, get the schema right first
+- Rust Tauri commands stay thin — they are the API boundary, keep signatures clean
+- Claude API calls accept mcp_servers array for future Tier 3 connector passthrough
+- File content is never sent to Claude without explicit user opt-in (privacy default)
+- Confidence threshold for auto-move vs pending inbox: tune with real usage, start conservative
+- macOS transparency requires macOSPrivateApi in tauri.conf.json and macos-private-api Cargo feature
+
+---
+
+## Current Status
+
+Milestone 1 complete.
+
+App runs tray-only at launch. Ctrl+N (dev shortcut) or tray left-click toggles the panel; tray menu offers Open Panel and Quit. Panel is 340px, transparent with native Sidebar vibrancy, right-anchored, focus:false, draggable via title bar. Minimal PanelShell UI in place; file watcher runs in Rust but UI is decoupled until M2.
+
+Next task: Milestone 2 — expand watcher to Desktop, SQLite move history, file move/undo commands, notifications.

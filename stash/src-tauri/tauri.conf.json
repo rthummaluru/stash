@@ -10,23 +10,19 @@
     "frontendDist": "../dist"
   },
   "app": {
+    "macOSPrivateApi": true,
     "windows": [
       {
-        "label": "main",
+        "label": "panel",
         "title": "stash",
-        "width": 800,
-        "height": 600
-      },
-      {
-        "label": "test_overlay",
-        "title": "test_overlay",
         "visible": false,
         "decorations": false,
         "alwaysOnTop": true,
-        "focus": true,
-        "width": 800,
-        "height": 600,
-        "url": "http://localhost:1420/test_overlay"
+        "transparent": true,
+        "skipTaskbar": true,
+        "focus": false,
+        "width": 340,
+        "height": 480
       }
     ],
     "security": {
